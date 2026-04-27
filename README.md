@@ -63,7 +63,7 @@ ComputerVision/
 ```bash
 # 1. Clone and enter the repo
 git clone https://github.com/<your-username>/hand-gesture-visualizer.git
-cd ComputerVision
+cd hand-gesture-visualizer
 
 # 2. Create a virtual environment
 python -m venv .venv
