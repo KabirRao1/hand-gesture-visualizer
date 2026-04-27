@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-State Hand-Controlled Tunnel</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #ffffff; 
+            font-family: monospace; font-size: 16px; z-index: 100; 
+            pointer-events: none; text-shadow: 0px 0px 5px #ff8800;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <div>Mode:         <span id="val-mode">2 (Neon Barrel)</span></div>
+        <br>
+        <div>Pinch Index:  <span id="val-index">1.000</span></div>
+        <div>Pinch Middle: <span id="val-middle">1.000</span></div>
+        <div>Rotation:     <span id="val-rot">0.500</span></div>
+    </div>
+
+<script>
+    // --- 1. State Management & WebSockets ---
+    let targetData = { pinch_index: 1.0, pinch_middle: 1.0, rotation: 0.5 };
+    let currentData = { pinch_index: 1.0, pinch_middle: 1.0, rotation: 0.5 };
+    
+    // START AT MODE 2
+    let currentMode = 2;      
+    let gestureLocked = false; 
+
+    const ws = new WebSocket("ws://localhost:8765");
+    ws.onmessage = (event) => {
+        const newData = JSON.parse(event.data);
+        targetData.pinch_index = newData.pinch_index;
+        targetData.pinch_middle = newData.pinch_middle;
+        targetData.rotation = newData.rotation;
+        
+        // EXPANDED THRESHOLD: Pinches are now looking for 0.25 or under
+        const isIndexZero = targetData.pinch_index <= 0.15;
+        const isMiddleZero = targetData.pinch_middle <= 0.15;
+        const isRotTilted = targetData.rotation > 0.75 && targetData.rotation < 0.95;
+
+        if (isIndexZero && isMiddleZero && isRotTilted && !gestureLocked) {
+            // Swap modes
+            currentMode = currentMode === 1 ? 2 : 1;
+            gestureLocked = true; // Lock it
+            
+            // Toggle visibility
+            scene1Container.visible = (currentMode === 1);
+            scene2Container.visible = (currentMode === 2);
+            
+            // Update UI text
+            document.getElementById("val-mode").innerText = currentMode === 1 ? "1 (Grid Corkscrew)" : "2 (Neon Barrel)";
+        } else if (!isIndexZero || !isMiddleZero) {
+            // Unlock the gesture once the user opens their hands above the 0.25 threshold
+            gestureLocked = false; 
+        }
+    };
+
+    // --- 2. Core Three.js Setup ---
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.05);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // --- 3. Post-Processing (The Glow) ---
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    bloomPass.threshold = 0;
+    bloomPass.strength = 1.5;
+    bloomPass.radius = 0.5;
+
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+
+    // --- 4. Scene 1: The Dense Grid Corkscrew ---
+    const scene1Container = new THREE.Group();
+    scene1Container.visible = false; // Hide this one initially!
+    scene.add(scene1Container);
+    
+    const tunnelRings1 = [];
+    const ringCount1 = 40;
+    const boxGeo1 = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    const edgesGeo1 = new THREE.EdgesGeometry(boxGeo1);
+
+    for (let z = 0; z < ringCount1; z++){
+        const ringGroup = new THREE.Group();
+        const ringMaterial = new THREE.LineBasicMaterial({ color: 0xff8800 });
+        ringGroup.userData.material = ringMaterial;
+
+        for (let x = -2; x <= 2; x += 1) {
+            for (let y = -2; y <= 2; y += 1) {
+                if (Math.abs(x) === 2 || Math.abs(y) === 2) {
+                    const cubeOutline = new THREE.LineSegments(edgesGeo1, ringMaterial);
+                    cubeOutline.position.set(x, y, 0);
+                    ringGroup.add(cubeOutline);
+                }
+            }
+        }
+        ringGroup.position.z = -z * 2;
+        scene1Container.add(ringGroup);
+        tunnelRings1.push(ringGroup);
+    }
+
+    // --- 5. Scene 2: The Large Purple Barrel Roll ---
+    const scene2Container = new THREE.Group();
+    scene2Container.visible = true; // Show this one initially!
+    scene.add(scene2Container);
+    
+    const tunnelRings2 = [];
+    const ringCount2 = 50;
+    const geo2 = new THREE.BoxGeometry(10, 10, 2);
+    const edgesGeo2 = new THREE.EdgesGeometry(geo2);
+    const mat2 = new THREE.LineBasicMaterial({ color: 0xaa00ff, linewidth: 2 });
+
+    for (let i = 0; i < ringCount2; i++) {
+        const line = new THREE.LineSegments(edgesGeo2, mat2.clone());
+        line.position.z = -i * 2;
+        scene2Container.add(line);
+        tunnelRings2.push(line);
+    }
+
+    // --- 6. Animation Loop ---
+    let time = 0;
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        // LERP Data Smoothing
+        currentData.pinch_index += (targetData.pinch_index - currentData.pinch_index) * 0.1;
+        currentData.pinch_middle += (targetData.pinch_middle - currentData.pinch_middle) * 0.1;
+        currentData.rotation += (targetData.rotation - currentData.rotation) * 0.1;
+        
+        // Update HUD Text
+        document.getElementById("val-index").innerText = currentData.pinch_index.toFixed(3);
+        document.getElementById("val-middle").innerText = currentData.pinch_middle.toFixed(3);
+        document.getElementById("val-rot").innerText = currentData.rotation.toFixed(3);
+
+        // --- Execute Animation based on Active Mode ---
+        if (currentMode === 1) {
+            // MODE 1: Grid Corkscrew Animation
+            const speed1 = (currentData.pinch_index * 0.15) + 0.01;
+            
+            // INVERTED ROTATION: Added the negative sign here
+            const twistIntensity1 = -(currentData.rotation - 0.5) * 2.0; 
+            
+            const baseHue1 = currentData.pinch_middle;
+
+            tunnelRings1.forEach((ring) => {
+                ring.position.z += speed1;
+                if (ring.position.z > 5) {
+                    ring.position.z -= (ringCount1 * 2);
+                }
+                ring.rotation.z = ring.position.z * (twistIntensity1 * 0.1);
+                
+                const zOffset = Math.abs(ring.position.z) * 0.02;
+                ring.userData.material.color.setHSL((baseHue1 + zOffset) % 1, 1.0, 0.5);
+            });
+            
+        } else if (currentMode === 2) {
+            // MODE 2: Large Barrel Roll Animation
+            const speed2 = currentData.pinch_index * 0.5;
+            const hue2 = currentData.pinch_middle;
+            
+            // INVERTED ROTATION: Added the negative sign here
+            const twist2 = -(currentData.rotation - 0.5) * 5;
+
+            tunnelRings2.forEach((ring, index) => {
+                ring.position.z += speed2;
+                if (ring.position.z > 5) {
+                    ring.position.z -= (ringCount2 * 2);
+                }
+                ring.rotation.z = time * 0.5 + (ring.position.z * twist2 * 0.05);
+                ring.material.color.setHSL((hue2 + index * 0.01) % 1, 1.0, 0.5);
+            });
+        }
+
+        // Render via Post-Processing
+        composer.render();
+    }
+
+    // Handle Resizing
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

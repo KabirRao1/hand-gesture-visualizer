@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- OS / misc ---
+*.log
+*.tmp
+
+# --- Optional: uncomment to exclude trained artifacts ---
+# Keep them in for a "clone-and-run" demo, exclude them if the
+# repo gets too large or the data is private.
+# ml/data/*.csv
+# ml/models/*.joblib
